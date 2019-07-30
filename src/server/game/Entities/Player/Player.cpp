@@ -769,7 +769,16 @@ Player::Player(WorldSession* session): Unit(true), m_mover(this)
     m_drunkTimer = 0;
     m_deathTimer = 0;
     m_deathExpireTime = 0;
-
+    m_flyhackTimer = 0;
+    if (sWorld->getBoolConfig(CONFIG_ANTICHEAT_FLYHACK_ENABLED))
+        m_flyhackTimer = sWorld->getIntConfig(CONFIG_ANTICHEAT_FLYHACK_TIMER);
+    m_mountTimer = 0;
+    m_rootUpdTimer = 0;
+    m_ACKmounted = false;
+    m_rootUpd = false;
+    m_skipOnePacketForASH = true;
+    m_isjumping = false;
+    m_canfly = false;
     m_swingErrorMsg = 0;
 
     for (uint8 j = 0; j < PLAYER_MAX_BATTLEGROUND_QUEUES; ++j)
@@ -900,6 +909,9 @@ Player::Player(WorldSession* session): Unit(true), m_mover(this)
     m_timeSyncClient = 0;
     m_timeSyncServer = 0;
 
+    lastMoveClientTimestamp = 0;
+    lastMoveServerTimestamp = 0;
+
     for (uint8 i = 0; i < MAX_POWERS; ++i)
         m_powerFraction[i] = 0;
 
@@ -933,6 +945,9 @@ Player::Player(WorldSession* session): Unit(true), m_mover(this)
         m_charmAISpells[i] = 0;
 
     m_applyResilience = true;
+
+    SetLastMoveClientTimestamp(getMSTime());
+    SetLastMoveServerTimestamp(getMSTime());
 }
 
 Player::~Player()
@@ -1767,6 +1782,41 @@ void Player::Update(uint32 p_time)
             m_zoneUpdateTimer -= p_time;
     }
 
+    if (m_flyhackTimer > 0)
+    {
+        if (p_time >= m_flyhackTimer)
+        {
+            if (!CheckOnFlyHack() && sWorld->getBoolConfig(CONFIG_AFH_KICK_ENABLED))
+                GetSession()->KickPlayer();
+
+            m_flyhackTimer = sWorld->getIntConfig(CONFIG_ANTICHEAT_FLYHACK_TIMER);
+        }
+        else
+            m_flyhackTimer -= p_time;
+    }
+
+    if (m_ACKmounted && m_mountTimer > 0)
+    {
+        if (p_time >= m_mountTimer)
+        {
+            m_mountTimer = 0;
+            m_ACKmounted = false;
+        }
+        else
+            m_mountTimer -= p_time;
+    }
+
+    if (m_rootUpd && m_rootUpdTimer > 0)
+    {
+        if (p_time >= m_rootUpdTimer)
+        {
+            m_rootUpdTimer = 0;
+            m_rootUpd = false;
+        }
+        else
+            m_rootUpdTimer -= p_time;
+    }
+
     if (m_timeSyncTimer > 0)
     {
         if (p_time >= m_timeSyncTimer)
@@ -2166,6 +2216,7 @@ void Player::SendTeleportAckPacket()
 
 bool Player::TeleportTo(uint32 mapid, float x, float y, float z, float orientation, uint32 options /*= 0*/, Unit *target /*= nullptr*/)
 {
+    SetSkipOnePacketForASH(true); // for except kick by antispeedhack
     if (!MapManager::IsValidMapCoord(mapid, x, y, z, orientation))
     {
         sLog->outError("TeleportTo: invalid map (%d) or invalid coordinates (X: %f, Y: %f, Z: %f, O: %f) given when teleporting player (GUID: %u, name: %s, map: %d, X: %f, Y: %f, Z: %f, O: %f).",
@@ -2184,7 +2235,6 @@ bool Player::TeleportTo(uint32 mapid, float x, float y, float z, float orientati
     Pet* pet = GetPet();
 
     MapEntry const* mEntry = sMapStore.LookupEntry(mapid);
-
     // don't let enter battlegrounds without assigned battleground id (for example through areatrigger)...
     if (!InBattleground() && mEntry->IsBattlegroundOrArena())
         return false;
@@ -27465,22 +27515,25 @@ bool Player::SetDisableGravity(bool disable, bool packetOnly /*= false*/)
 
 bool Player::SetCanFly(bool apply, bool packetOnly /*= false*/)
 {
-    if (!packetOnly && !Unit::SetCanFly(apply))
-        return false;
-
     if (!apply)
         SetFallInformation(time(NULL), GetPositionZ());
 
+    SetCanFlybyServer(apply);
     WorldPacket data(apply ? SMSG_MOVE_SET_CAN_FLY : SMSG_MOVE_UNSET_CAN_FLY, 12);
     data.append(GetPackGUID());
     data << uint32(0);          //! movement counter
     SendDirectMessage(&data);
 
-    data.Initialize(MSG_MOVE_UPDATE_CAN_FLY, 64);
-    data.append(GetPackGUID());
-    BuildMovementPacket(&data);
-    SendMessageToSet(&data, false);
-    return true;
+    if (packetOnly || Unit::SetCanFly(apply))
+    {
+        data.Initialize(MSG_MOVE_UPDATE_CAN_FLY, 64);
+        data.append(GetPackGUID());
+        BuildMovementPacket(&data);
+        SendMessageToSet(&data, false);
+        return true;
+    }
+    else
+        return false;
 }
 
 bool Player::SetHover(bool apply, bool packetOnly /*= false*/)

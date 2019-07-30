@@ -170,6 +170,17 @@ enum WorldBoolConfigs
     CONFIG_CHECK_GOBJECT_LOS,
     CONFIG_CLOSE_IDLE_CONNECTIONS,
     CONFIG_LFG_LOCATION_ALL, // Player can join LFG anywhere
+    CONFIG_ANTICHEAT_FAKEJUMPER_ENABLED,
+    CONFIG_ANTICHEAT_FAKEFLYINGMODE_ENABLED,
+    CONFIG_ANTICHEAT_DOUBLEJUMP_ENABLED,
+    CONFIG_ANTICHEAT_FLYHACK_ENABLED,
+    CONFIG_ANTICHEAT_SPEEDHACK_ENABLED,
+    CONFIG_ANTICHEAT_IGNORE_CONTROL_MOVEMENT_ENABLED,
+    CONFIG_ANTICHEAT_SAFEMODE_ENABLED,
+    CONFIG_ASH_KICK_ENABLED,
+    CONFIG_AFH_KICK_ENABLED,
+    CONFIG_FAKEJUMPER_KICK_ENABLED,
+    CONFIG_FAKEFLYINGMODE_KICK_ENABLED,
     BOOL_CONFIG_VALUE_COUNT
 };
 
@@ -338,6 +349,7 @@ enum WorldIntConfigs
     CONFIG_WARDEN_NUM_OTHER_CHECKS,
     CONFIG_BIRTHDAY_TIME,
     CONFIG_SOCKET_TIMEOUTTIME_ACTIVE,
+    CONFIG_ANTICHEAT_FLYHACK_TIMER,
     INT_CONFIG_VALUE_COUNT
 };
 
@@ -788,6 +800,9 @@ class World
         std::string GetConfigFileList() { return m_configFileList; }
         void SetConfigFileList(std::string list) { m_configFileList = list; }
 
+        void SetACMapExcludes(const std::string& mapIdExcludes);
+        bool isMapDisabledForAC(uint32 mapid) const { return excludeACMapsId.count(mapid); }
+
     protected:
         void _UpdateGameTime();
         // callback for UpdateRealmCharacters
@@ -886,6 +901,7 @@ class World
         ACE_Future_Set<PreparedQueryResult> m_realmCharCallbacks;
 
         std::string m_configFileList;
+        std::unordered_set<uint32> excludeACMapsId;
 };
 
 #define sWorld ACE_Singleton<World, ACE_Null_Mutex>::instance()

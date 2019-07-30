@@ -1785,8 +1785,7 @@ void WorldSession::HandleMoveSetCanFlyAckOpcode(WorldPacket & recv_data)
     uint64 guid;                                            // guid - unused
     recv_data.readPackGUID(guid);
 
-    // pussywizard: typical check for incomming movement packets
-    if (!_player->m_mover || !_player->m_mover->IsInWorld() || _player->m_mover->IsDuringRemoveFromWorld() || guid != _player->m_mover->GetGUID())
+    if (!_player)
     {
         recv_data.rfinish(); // prevent warnings spam
         return;
@@ -1799,7 +1798,10 @@ void WorldSession::HandleMoveSetCanFlyAckOpcode(WorldPacket & recv_data)
     ReadMovementInfo(recv_data, &movementInfo);
 
     recv_data.read_skip<float>();                           // unk2
-
+    if (movementInfo.HasMovementFlag(MOVEMENTFLAG_CAN_FLY))
+        _player->SetCanFlybyServer(true);
+    else
+        _player->SetCanFlybyServer(false);
     _player->m_mover->m_movementInfo.flags = movementInfo.GetMovementFlags();
 }
 
